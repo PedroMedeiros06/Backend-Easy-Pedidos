@@ -1,25 +1,22 @@
-// src/funcionarios/funcionarios.service.ts
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from 'src/supabase/supabase.service';
-import { CriarFuncionarioDto } from './dto/criar-funcionario.dto';
-import { AtualizarFuncionarioDto } from './dto/atualizar-funcionario.dto';
-import { AlternarStatusDto } from './dto/atualizar-funcionario.dto';
+import { CriarFuncionarioDto, AtualizarFuncionarioDto, AlternarStatusFuncionarioDto, ListarFuncionarios, PermissoesDto } from './dto/funcionarios.dto';
 
 @Injectable()
 export class FuncionariosService {
   constructor(private readonly supabase: SupabaseService) {}
 
-  // 1️⃣ LISTAR FUNCIONÁRIOS COM JOIN NO RESTAURANTE
-  async listar() {
+  // 1️⃣ LISTAR FUNCIONÁRIOS
+  async listar(filters: ListarFuncionarios) {
     const { data, error } = await this.supabase.client
       .from('Funcionario')
       .select(`*, restaurante:restauranteId (nome)`)
       .neq("restauranteId", 0)
-      .order('nome', { ascending: true });
+      .order('nome', { ascending: true })
+      .limit(filters.limite || 10);
 
     if (error) throw new BadRequestException(`Erro ao listar funcionários: ${error.message}`);
 
-    // Mapeia o resultado para "achatar" o objeto do restaurante, entregando a propriedade 'restauranteNome' mastigada para o Frontend
     return data.map((func: any) => ({
       ...func,
       restauranteNome: func.restaurante?.nome || 'Não vinculado',
@@ -28,30 +25,37 @@ export class FuncionariosService {
 
   // 2️⃣ CRIAR NOVO FUNCIONÁRIO
   async criar(dados: CriarFuncionarioDto) {
+    // 🛡️ Mapeia e garante a estrutura das permissões padrão logo na criação
+    const permissoesPadrao = {
+      isOwner: dados.permissoes?.isOwner ?? false,
+      verFinanceiro: dados.permissoes?.isOwner ? true : (dados.permissoes?.verFinanceiro ?? false),
+      gerenciarProdutos: dados.permissoes?.isOwner ? true : (dados.permissoes?.gerenciarProdutos ?? false),
+      caixaPedidos: dados.permissoes?.isOwner ? true : (dados.permissoes?.caixaPedidos ?? false),
+    };
+
+    const payload = {
+      ...dados,
+      permissoes: permissoesPadrao
+    };
+
     const { data, error } = await this.supabase.client
       .from('Funcionario')
-      .insert([dados])
+      .insert([payload])
       .select();
 
     if (error) throw new BadRequestException(`Erro ao criar colaborador: ${error.message}`);
     return data[0];
   }
 
-  // 3️⃣ ATUALIZAR DADOS DO FUNCIONÁRIO
+  // 3️⃣ ATUALIZAR DADOS
   async atualizar(id: number, dados: AtualizarFuncionarioDto) {
-    const { senha, permissoes, ...restoDosDados } = dados;
-
-    // Remove campos nulos/undefined vindos do partial DTO para evitar quebras no Supabase
+    const { senhaHash, permissoes, ...restoDosDados } = dados;
     const dadosParaAtualizar: any = { ...restoDosDados };
 
-    // 🔒 Só atualiza a senha se ela foi de fato preenchida
-    if (senha && senha.trim() !== '') {
-      // Se você for usar bcrypt futuramente, o hash entra aqui:
-      // dadosParaAtualizar.senha = await bcrypt.hash(senha, 10);
-      dadosParaAtualizar.senha = senha; 
+    if (senhaHash && senhaHash.trim() !== '') {
+      dadosParaAtualizar.senha = senhaHash; 
     }
 
-    // 🛡️ Garante a estrutura correta do JSONB de permissões
     if (permissoes) {
       dadosParaAtualizar.permissoes = {
         isOwner: permissoes.isOwner ?? false,
@@ -74,13 +78,15 @@ export class FuncionariosService {
   }
 
   // 4️⃣ BLOQUEAR / ATIVAR ACESSO
-  async alternarStatus(id: number, dados: AlternarStatusDto) {
-    const { statusAtual, motivo } = dados;
+  async alternarStatus(id: number, dados: AlternarStatusFuncionarioDto) {
+    const { ativo, motivo } = dados;
     
-    const novoStatusBloqueio = !statusAtual; // Inverte o estado booleano vindo da tabela
+    // Se ativo for FALSE, significa que o usuário deve ser BLOQUEADO (bloqueado = true)
+    const deveBloquear = !ativo; 
+
     const dadosStatus = {
-      bloqueado: novoStatusBloqueio,
-      motivoBloqueio: novoStatusBloqueio ? motivo : null, // Limpa a string de justificativa caso esteja desbloqueando
+      bloqueado: deveBloquear,
+      motivo_bloqueio: deveBloquear ? (motivo || 'Motivo não informado') : null, 
     };
 
     const { data, error } = await this.supabase.client

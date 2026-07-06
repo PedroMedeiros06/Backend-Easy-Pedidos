@@ -1,16 +1,14 @@
-import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 import { FuncionariosService } from './funcionarios.service';
-import { CriarFuncionarioDto } from './dto/criar-funcionario.dto';
-import { AtualizarFuncionarioDto } from './dto/atualizar-funcionario.dto';
-import { AlternarStatusDto } from './dto/atualizar-funcionario.dto';
+import { CriarFuncionarioDto, AtualizarFuncionarioDto, AlternarStatusFuncionarioDto, ListarFuncionarios } from './dto/funcionarios.dto';
 
 @Controller('funcionarios')
 export class FuncionariosController {
   constructor(private readonly funcionariosService: FuncionariosService) {}
 
   @Get()
-  async listar() {
-    return this.funcionariosService.listar();
+  async listar(@Query() query: ListarFuncionarios) {
+    return this.funcionariosService.listar(query);
   }
 
   @Post()
@@ -18,7 +16,6 @@ export class FuncionariosController {
     return this.funcionariosService.criar(body);
   }
 
-  // 🌟 O ParseIntPipe converte o ID da URL de String para Number automaticamente
   @Put(':id')
   async atualizar(
     @Param('id', ParseIntPipe) id: number, 
@@ -30,7 +27,7 @@ export class FuncionariosController {
   @Patch(':id/status')
   async alternarStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: AlternarStatusDto,
+    @Body() body: AlternarStatusFuncionarioDto,
   ) {
     return this.funcionariosService.alternarStatus(id, body);
   }

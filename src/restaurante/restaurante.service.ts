@@ -1,19 +1,19 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Query} from '@nestjs/common';
 import { SupabaseService } from 'src/supabase/supabase.service';
-import { criarRestauranteDto } from './dto/criar-restaurante.dto';
-import { AtualizarRestauranteDto, AlternarStatusRestauranteDto } from './dto/atualizar-restaurante.dto';
+import { CriarRestauranteDto, AtualizarRestauranteDto, AlternarStatusRestauranteDto, ListarRestaurantesDto  } from './dto/restaurante.dto';
 
 @Injectable()
 export class RestauranteService {
   constructor(private readonly supabase: SupabaseService) {}
 
   // 1️⃣ LISTAR RESTAURANTES (Trazendo os dados mapeados idênticos ao que a tabela espera)
-  async listar() {
+  async listar(filtros: ListarRestaurantesDto) {
     const { data, error } = await this.supabase.client
       .from('Restaurante')
       .select('*, funcionarios:Funcionario(*)')
       .neq('id', 0)
-      .order('nome', { ascending: true });
+      .order('nome', { ascending: true })
+      .limit(filtros.limite || 10);
 
     if (error) throw new BadRequestException(`Erro ao listar estabelecimentos: ${error.message}`);
     if (!data) return [];
@@ -40,7 +40,7 @@ export class RestauranteService {
   }
 
   // 2️⃣ CADASTRAR RESTAURANTE + DONO MASTER (Sua regra de negócio original recuperada!)
-  async criar(dados: criarRestauranteDto) {
+  async criar(dados: CriarRestauranteDto) {
     // A. Verifica se o CPF do dono já existe
     const { data: cpfExistente } = await this.supabase.client
       .from('Funcionario')
