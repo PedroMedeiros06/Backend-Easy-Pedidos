@@ -15,8 +15,11 @@ try {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  // Ativa o CORS para permitir que seu Front-end se conecte depois
-  app.enableCors();
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // Ignora propriedades que não estão no DTO
