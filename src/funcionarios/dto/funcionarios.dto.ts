@@ -1,6 +1,7 @@
 import { IsString, IsEmail, IsNotEmpty, IsOptional, IsNumber, IsObject, IsBoolean, IsInt, Min, Max, ValidateNested } from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
+import { UUID } from 'crypto';
 
 export class PermissoesDto {
   @IsOptional() @IsBoolean() isOwner?: boolean;
@@ -60,4 +61,15 @@ export class ListarFuncionarios {
   @Min(1)
   @Max(100)
   limite?: number = 10;
+}
+
+export interface Member {
+  member_id: UUID;
+  auth_id: UUID;
+  member_name: string;
+  company_id: UUID;
+  member_cpf: string;
+  member_email: string;
+  member_access: string;
+
 }
