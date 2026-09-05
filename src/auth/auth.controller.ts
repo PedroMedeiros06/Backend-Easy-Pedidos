@@ -1,17 +1,32 @@
-// src/auth/auth.controller.ts
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+
 import { AuthService } from './auth.service';
 import { AuthParms } from './auth.dto';
+import { CompanyAuthGuard } from '@/common/guards/company-auth.guard';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import type { CompanyUser } from '../common/types/current-user';
 
-@Controller('auth') // Rota base: http://localhost:3000/auth
+@Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('login') // Rota: POST /auth/login
-  @HttpCode(HttpStatus.OK) // Força o retorno HTTP 200 ao invés do 211 padrão de POST
-  async login(
-    @Body() payload: AuthParms
-  ) {
-    return await this.authService.login(payload);
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  login(@Body() payload: AuthParms) {
+    return this.authService.login(payload);
+  }
+
+  @Get('me')
+  @UseGuards(CompanyAuthGuard)
+  me(@CurrentUser() user: CompanyUser) {
+    return user;
   }
 }

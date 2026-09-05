@@ -1,23 +1,31 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 
 @Injectable()
-export class IntegracoesService {
-  
+export class IntegrationsService {
   // 📍 Consulta de CEP
-  async buscarCep(cep: string) {
+  async findCep(cep: string) {
     const cepLimpo = cep.replace(/\D/g, '');
 
     if (cepLimpo.length !== 8) {
-      throw new BadRequestException('Formato de CEP inválido. Deve conter 8 dígitos.');
+      throw new BadRequestException(
+        'Formato de CEP inválido. Deve conter 8 dígitos.',
+      );
     }
 
     try {
-      const response = await fetch(`https://brasilapi.com.br/api/cep/v2/${cepLimpo}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-          'Accept': 'application/json',
+      const response = await fetch(
+        `https://brasilapi.com.br/api/cep/v2/${cepLimpo}`,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            Accept: 'application/json',
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         throw new NotFoundException('CEP não encontrado.');
@@ -33,7 +41,10 @@ export class IntegracoesService {
         estado: data.state,
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       throw new BadRequestException('Erro ao consultar o CEP.');
@@ -41,22 +52,28 @@ export class IntegracoesService {
   }
 
   // 🏢 Consulta de CNPJ (com fallback e headers de navegador)
-  async buscarCnpj(cnpj: string) {
+  async findCnpj(cnpj: string) {
     const cnpjLimpo = cnpj.replace(/\D/g, '');
 
     if (cnpjLimpo.length !== 14) {
-      throw new BadRequestException('Formato de CNPJ inválido. Deve conter 14 dígitos.');
+      throw new BadRequestException(
+        'Formato de CNPJ inválido. Deve conter 14 dígitos.',
+      );
     }
 
     const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      Accept: 'application/json',
     };
 
     // 1ª Tentativa: BrasilAPI
     try {
-      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`, { headers });
-      
+      const response = await fetch(
+        `https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`,
+        { headers },
+      );
+
       if (response.ok) {
         const data = await response.json();
         return {
@@ -66,7 +83,8 @@ export class IntegracoesService {
           situacao_cadastral: data.descricao_situacao_cadastral,
           cnae_fiscal_descricao: data.cnae_fiscal_descricao,
           cep: data.cep,
-          logradouro: `${data.descricao_tipo_de_logradouro || ''} ${data.logradouro || ''}`.trim(),
+          logradouro:
+            `${data.descricao_tipo_de_logradouro || ''} ${data.logradouro || ''}`.trim(),
           numero: data.numero,
           complemento: data.complemento,
           bairro: data.bairro,
@@ -80,8 +98,11 @@ export class IntegracoesService {
 
     // 2ª Tentativa (Fallback): ReceitaWS
     try {
-      const responseFallback = await fetch(`https://publica.receitaws.com.br/v1/cnpj/${cnpjLimpo}`, { headers });
-      
+      const responseFallback = await fetch(
+        `https://publica.receitaws.com.br/v1/cnpj/${cnpjLimpo}`,
+        { headers },
+      );
+
       if (responseFallback.ok) {
         const data = await responseFallback.json();
 
@@ -106,6 +127,8 @@ export class IntegracoesService {
       // Se ambos falharem, lança a exceção final
     }
 
-    throw new NotFoundException('Não foi possível localizar este CNPJ no momento. Verifique o número digitado.');
+    throw new NotFoundException(
+      'Não foi possível localizar este CNPJ no momento. Verifique o número digitado.',
+    );
   }
 }
