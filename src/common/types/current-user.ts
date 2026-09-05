@@ -5,6 +5,7 @@ export interface CompanyUser {
   authId: string;
   memberId: string;
   companyId: number;
+  companyCode: string;
   email: string;
   memberAccess: 'owner' | 'employee';
 

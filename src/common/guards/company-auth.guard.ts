@@ -47,7 +47,8 @@ export class CompanyAuthGuard implements CanActivate {
         member_email,
         member_active,
         member_access,
-        member_permissions
+        member_permissions,
+        companies(company_code)
       `,
       )
       .eq('auth_id', user.id)
@@ -66,6 +67,7 @@ export class CompanyAuthGuard implements CanActivate {
       authId: user.id,
       memberId: member.member_id,
       companyId: member.company_id,
+      companyCode: (member as any).companies?.company_code,
       email: member.member_email,
       memberAccess: member.member_access,
       permissions: member.member_permissions ?? {},

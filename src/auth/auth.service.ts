@@ -66,7 +66,8 @@ export class AuthService {
         member_email,
         member_access,
         member_active,
-        member_permissions
+        member_permissions,
+        companies(company_code, company_name)
       `,
       )
       .eq('auth_id', authData.user.id)
@@ -75,6 +76,8 @@ export class AuthService {
     if (memberLookupError || !member || !member.member_active) {
       throw new UnauthorizedException('Usuário não possui um membro válido.');
     }
+
+    const company = (member as any).companies;
 
     return {
       user: {
@@ -97,6 +100,12 @@ export class AuthService {
         company_id: member.company_id,
         member_name: member.member_name,
         member_access: member.member_access,
+      },
+
+      company: {
+        company_id: member.company_id,
+        company_code: company?.company_code,
+        company_name: company?.company_name,
       },
 
       permissions: member.member_permissions ?? {},
