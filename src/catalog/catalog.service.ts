@@ -14,6 +14,22 @@ import {
 export class CatalogService {
   constructor(private readonly supabase: SupabaseService) {}
 
+  private toCatalogItemResponse(item: any) {
+    return {
+      itemId: item.item_id,
+      companyId: item.company_id,
+      itemName: item.item_name,
+      itemDescription: item.item_description,
+      priceCents: item.price_cents,
+      categoryId: item.category_id,
+      categoryName: item.categories?.category_name ?? null,
+      imageUrl: item.image_url,
+      active: item.active,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    };
+  }
+
   async list(companyId: number, query: ListCatalogItemsQueryDto) {
     let builder = this.supabase.adminClient
       .from('catalog_items')
@@ -34,7 +50,7 @@ export class CatalogService {
       );
     }
 
-    return data ?? [];
+    return (data ?? []).map((item: any) => this.toCatalogItemResponse(item));
   }
 
   async create(companyId: number, payload: CreateCatalogItemDto) {
@@ -84,7 +100,7 @@ export class CatalogService {
       throw new BadRequestException(`Erro ao criar item: ${error.message}`);
     }
 
-    return data;
+    return this.toCatalogItemResponse(data);
   }
 
   async update(
@@ -115,7 +131,7 @@ export class CatalogService {
       throw new NotFoundException('Item não encontrado.');
     }
 
-    return data;
+    return this.toCatalogItemResponse(data);
   }
 
   async remove(companyId: number, itemId: string) {

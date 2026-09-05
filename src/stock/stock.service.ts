@@ -10,6 +10,19 @@ import { AdjustStockDto, UpsertStockDto } from './dto/stock.dto';
 export class StockService {
   constructor(private readonly supabase: SupabaseService) {}
 
+  private toStockResponse(stock: any) {
+    return {
+      stockId: stock.stock_id,
+      companyId: stock.company_id,
+      itemId: stock.item_id,
+      itemName: stock.catalog_items?.item_name ?? null,
+      quantity: stock.quantity,
+      lowStockAt: stock.low_stock_at,
+      createdAt: stock.created_at,
+      updatedAt: stock.updated_at,
+    };
+  }
+
   async list(companyId: number) {
     const { data, error } = await this.supabase.adminClient
       .from('stock')
@@ -21,7 +34,7 @@ export class StockService {
       throw new BadRequestException(`Erro ao listar estoque: ${error.message}`);
     }
 
-    return data ?? [];
+    return (data ?? []).map((stock: any) => this.toStockResponse(stock));
   }
 
   async upsert(companyId: number, payload: UpsertStockDto) {
@@ -44,7 +57,7 @@ export class StockService {
       throw new BadRequestException(`Erro ao salvar estoque: ${error.message}`);
     }
 
-    return data;
+    return this.toStockResponse(data);
   }
 
   async adjust(companyId: number, stockId: string, payload: AdjustStockDto) {
@@ -80,6 +93,6 @@ export class StockService {
       );
     }
 
-    return data;
+    return this.toStockResponse(data);
   }
 }

@@ -14,6 +14,18 @@ import {
 export class CategoriesService {
   constructor(private readonly supabase: SupabaseService) {}
 
+  private toCategoryResponse(category: any) {
+    return {
+      categoryId: category.category_id,
+      companyId: category.company_id,
+      categoryName: category.category_name,
+      sortOrder: category.sort_order,
+      active: category.active,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at,
+    };
+  }
+
   async list(companyId: number, query: ListCategoriesQueryDto) {
     const { data, error } = await this.supabase.adminClient
       .from('categories')
@@ -28,7 +40,7 @@ export class CategoriesService {
       );
     }
 
-    return data ?? [];
+    return (data ?? []).map((category: any) => this.toCategoryResponse(category));
   }
 
   async create(companyId: number, payload: CreateCategoryDto) {
@@ -77,7 +89,7 @@ export class CategoriesService {
       );
     }
 
-    return data;
+    return this.toCategoryResponse(data);
   }
 
   async update(
@@ -107,7 +119,7 @@ export class CategoriesService {
       throw new NotFoundException('Categoria não encontrada.');
     }
 
-    return data;
+    return this.toCategoryResponse(data);
   }
 
   async remove(companyId: number, categoryId: string) {
