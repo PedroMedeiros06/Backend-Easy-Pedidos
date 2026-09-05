@@ -1,4 +1,4 @@
-import { IsInt, IsUUID, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class UpsertStockDto {
   @IsUUID()
@@ -8,9 +8,10 @@ export class UpsertStockDto {
   @Min(0)
   quantity!: number;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  lowStockAt!: number;
+  lowStockAt?: number;
 }
 
 export class AdjustStockDto {

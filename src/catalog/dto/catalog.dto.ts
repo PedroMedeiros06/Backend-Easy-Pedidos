@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -31,6 +32,15 @@ export class CreateCatalogItemDto {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  @IsOptional()
+  @IsInt({ message: 'O desconto deve ser informado em centavos ou pontos percentuais, como inteiro.' })
+  @Min(0)
+  discountValue?: number;
+
+  @IsOptional()
+  @IsIn(['value', 'percentage'])
+  discountType?: 'value' | 'percentage';
 }
 
 export class UpdateCatalogItemDto extends PartialType(CreateCatalogItemDto) {

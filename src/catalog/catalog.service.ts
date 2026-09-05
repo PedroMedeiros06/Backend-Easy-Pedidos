@@ -24,6 +24,8 @@ export class CatalogService {
       categoryId: item.category_id,
       categoryName: item.categories?.category_name ?? null,
       imageUrl: item.image_url,
+      discountValue: item.discount_value,
+      discountType: item.discount_type,
       active: item.active,
       createdAt: item.created_at,
       updatedAt: item.updated_at,
@@ -83,6 +85,12 @@ export class CatalogService {
       );
     }
 
+    if (payload.discountType === 'percentage' && (payload.discountValue ?? 0) > 100) {
+      throw new BadRequestException(
+        'O desconto percentual não pode ser maior que 100.',
+      );
+    }
+
     const { data, error } = await this.supabase.adminClient
       .from('catalog_items')
       .insert({
@@ -92,6 +100,8 @@ export class CatalogService {
         price_cents: payload.priceCents,
         category_id: payload.categoryId,
         image_url: payload.imageUrl,
+        discount_value: payload.discountValue ?? 0,
+        discount_type: payload.discountType ?? 'value',
       })
       .select()
       .single();
@@ -108,6 +118,12 @@ export class CatalogService {
     itemId: string,
     payload: UpdateCatalogItemDto,
   ) {
+    if (payload.discountType === 'percentage' && (payload.discountValue ?? 0) > 100) {
+      throw new BadRequestException(
+        'O desconto percentual não pode ser maior que 100.',
+      );
+    }
+
     const { data, error } = await this.supabase.adminClient
       .from('catalog_items')
       .update({
@@ -116,6 +132,8 @@ export class CatalogService {
         price_cents: payload.priceCents,
         category_id: payload.categoryId,
         image_url: payload.imageUrl,
+        discount_value: payload.discountValue,
+        discount_type: payload.discountType,
         active: payload.active,
         updated_at: new Date().toISOString(),
       })
