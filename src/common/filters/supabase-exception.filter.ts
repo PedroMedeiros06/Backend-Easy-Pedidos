@@ -1,4 +1,10 @@
-import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { Response } from 'express';
 
 @Catch()
@@ -22,7 +28,9 @@ export class SupabaseExceptionFilter implements ExceptionFilter {
     if (code === '23505') {
       return response.status(HttpStatus.BAD_REQUEST).json({
         statusCode: HttpStatus.BAD_REQUEST,
-        message: ['Este registro (E-mail, CPF ou Código) já está cadastrado no sistema!'],
+        message: [
+          'Este registro (E-mail, CPF ou Código) já está cadastrado no sistema!',
+        ],
         error: 'Bad Request',
       });
     }
@@ -31,7 +39,9 @@ export class SupabaseExceptionFilter implements ExceptionFilter {
     if (code === '23503') {
       return response.status(HttpStatus.BAD_REQUEST).json({
         statusCode: HttpStatus.BAD_REQUEST,
-        message: ['O estabelecimento informado não foi encontrado ou é inválido.'],
+        message: [
+          'O estabelecimento informado não foi encontrado ou é inválido.',
+        ],
         error: 'Bad Request',
       });
     }
