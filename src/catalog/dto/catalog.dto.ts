@@ -1,16 +1,40 @@
 import {
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
+
+export class CatalogItemIngredientInputDto {
+  @IsUUID()
+  ingredientId!: string;
+
+  @IsIn(['included', 'addon'], {
+    message: 'O papel do ingrediente deve ser "included" ou "addon".',
+  })
+  role!: 'included' | 'addon';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  quantityUsed?: number;
+
+  @IsOptional()
+  @IsInt({ message: 'O preço do adicional deve ser em centavos (inteiro).' })
+  @Min(0)
+  addonPriceCents?: number;
+}
 
 export class CreateCatalogItemDto {
   @IsNotEmpty({ message: 'O nome do item é obrigatório.' })
@@ -41,6 +65,13 @@ export class CreateCatalogItemDto {
   @IsOptional()
   @IsIn(['value', 'percentage'])
   discountType?: 'value' | 'percentage';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(0)
+  @ValidateNested({ each: true })
+  @Type(() => CatalogItemIngredientInputDto)
+  ingredients?: CatalogItemIngredientInputDto[];
 }
 
 export class UpdateCatalogItemDto extends PartialType(CreateCatalogItemDto) {

@@ -38,6 +38,7 @@ export class OrdersService {
         unitPriceCents: item.unit_price_cents,
         quantity: item.quantity,
         totalCents: item.total_cents,
+        addons: item.addons ?? [],
       })),
     };
   }
@@ -73,7 +74,9 @@ export class OrdersService {
 
     const { data: catalogItems, error } = await this.supabase.adminClient
       .from('catalog_items')
-      .select('item_id, item_name, price_cents, discount_value, discount_type, active')
+      .select(
+        'item_id, item_name, price_cents, discount_value, discount_type, active, catalog_item_ingredients(*, ingredients(ingredient_id, ingredient_name, unit, quantity))',
+      )
       .eq('company_id', companyId)
       .in('item_id', itemIds);
 
@@ -86,6 +89,10 @@ export class OrdersService {
     const catalogMap = new Map(
       (catalogItems ?? []).map((item: any) => [item.item_id, item]),
     );
+
+    // Acumula consumo total por ingrediente pra validar estoque de uma vez,
+    // considerando o pedido inteiro (não só linha por linha).
+    const ingredientUsage = new Map<string, number>();
 
     const orderItems = payload.items.map((requested) => {
       const catalogItem = catalogMap.get(requested.itemId);
@@ -102,11 +109,43 @@ export class OrdersService {
         );
       }
 
-      const unitPriceCents = this.applyItemDiscount(
-        catalogItem.price_cents,
-        catalogItem.discount_value ?? 0,
-        catalogItem.discount_type ?? 'value',
+      const links: any[] = catalogItem.catalog_item_ingredients ?? [];
+      const included = links.filter((link) => link.role === 'included');
+
+      const requestedAddonIds = new Set(requested.addonIngredientIds ?? []);
+      const availableAddons = links.filter((link) => link.role === 'addon');
+      const selectedAddons = availableAddons.filter((link) =>
+        requestedAddonIds.has(link.ingredient_id),
       );
+
+      const invalidAddonIds = [...requestedAddonIds].filter(
+        (id) => !availableAddons.some((link) => link.ingredient_id === id),
+      );
+      if (invalidAddonIds.length > 0) {
+        throw new BadRequestException(
+          `Adicional(is) inválido(s) para o item "${catalogItem.item_name}": ${invalidAddonIds.join(', ')}.`,
+        );
+      }
+
+      // soma consumo: ingredientes inclusos + adicionais escolhidos, multiplicado pela quantidade do pedido
+      for (const link of [...included, ...selectedAddons]) {
+        const used =
+          (link.quantity_used ?? 1) * requested.quantity +
+          (ingredientUsage.get(link.ingredient_id) ?? 0);
+        ingredientUsage.set(link.ingredient_id, used);
+      }
+
+      const addonPriceCents = selectedAddons.reduce(
+        (sum, link) => sum + (link.addon_price_cents ?? 0),
+        0,
+      );
+
+      const unitPriceCents =
+        this.applyItemDiscount(
+          catalogItem.price_cents,
+          catalogItem.discount_value ?? 0,
+          catalogItem.discount_type ?? 'value',
+        ) + addonPriceCents;
 
       return {
         item_id: catalogItem.item_id,
@@ -114,35 +153,73 @@ export class OrdersService {
         unit_price_cents: unitPriceCents,
         quantity: requested.quantity,
         total_cents: unitPriceCents * requested.quantity,
+        addons: selectedAddons.map((link) => ({
+          ingredientId: link.ingredient_id,
+          ingredientName: link.ingredients?.ingredient_name ?? null,
+          priceCents: link.addon_price_cents ?? 0,
+        })),
       };
     });
 
-    return orderItems;
+    await this.assertIngredientStock(ingredientUsage, catalogItems ?? []);
+
+    return { orderItems, ingredientUsage };
   }
 
-  private async decrementStock(
-    companyId: number,
-    orderItems: { item_id: string; quantity: number }[],
+  private async assertIngredientStock(
+    ingredientUsage: Map<string, number>,
+    catalogItems: any[],
   ) {
-    for (const item of orderItems) {
-      const { data: stock } = await this.supabase.adminClient
-        .from('stock')
-        .select('stock_id, quantity')
-        .eq('company_id', companyId)
-        .eq('item_id', item.item_id)
+    if (ingredientUsage.size === 0) {
+      return;
+    }
+
+    // Monta um mapa ingredientId -> {name, quantity} a partir do que já veio na query de itens.
+    const ingredientMap = new Map<string, { name: string; quantity: number }>();
+    for (const item of catalogItems) {
+      for (const link of item.catalog_item_ingredients ?? []) {
+        if (link.ingredients) {
+          ingredientMap.set(link.ingredient_id, {
+            name: link.ingredients.ingredient_name,
+            quantity: link.ingredients.quantity,
+          });
+        }
+      }
+    }
+
+    for (const [ingredientId, used] of ingredientUsage) {
+      const ingredient = ingredientMap.get(ingredientId);
+      if (!ingredient) {
+        continue;
+      }
+      if (ingredient.quantity < used) {
+        throw new BadRequestException(
+          `Estoque insuficiente de "${ingredient.name}" para este pedido.`,
+        );
+      }
+    }
+  }
+
+  private async decrementIngredients(
+    ingredientUsage: Map<string, number>,
+  ) {
+    for (const [ingredientId, used] of ingredientUsage) {
+      const { data: ingredient } = await this.supabase.adminClient
+        .from('ingredients')
+        .select('quantity')
+        .eq('ingredient_id', ingredientId)
         .maybeSingle();
 
-      // Sem registro de estoque pra esse item = não rastreado, não decrementa nada.
-      if (!stock) {
+      if (!ingredient) {
         continue;
       }
 
-      const newQuantity = Math.max(stock.quantity - item.quantity, 0);
+      const newQuantity = Math.max(ingredient.quantity - used, 0);
 
       await this.supabase.adminClient
-        .from('stock')
+        .from('ingredients')
         .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
-        .eq('stock_id', stock.stock_id);
+        .eq('ingredient_id', ingredientId);
     }
   }
 
@@ -152,7 +229,10 @@ export class OrdersService {
     payload: CreateOrderDto,
     createdByMemberId?: string,
   ) {
-    const orderItems = await this.buildOrderItems(companyId, payload);
+    const { orderItems, ingredientUsage } = await this.buildOrderItems(
+      companyId,
+      payload,
+    );
 
     const subtotalCents = orderItems.reduce(
       (sum, item) => sum + item.total_cents,
@@ -211,7 +291,7 @@ export class OrdersService {
       );
     }
 
-    await this.decrementStock(companyId, orderItems);
+    await this.decrementIngredients(ingredientUsage);
 
     return this.findById(companyId, order.order_id);
   }

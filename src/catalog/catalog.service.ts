@@ -15,6 +15,17 @@ export class CatalogService {
   constructor(private readonly supabase: SupabaseService) {}
 
   private toCatalogItemResponse(item: any) {
+    const ingredients = (item.catalog_item_ingredients ?? []).map(
+      (link: any) => ({
+        ingredientId: link.ingredient_id,
+        ingredientName: link.ingredients?.ingredient_name ?? null,
+        unit: link.ingredients?.unit ?? null,
+        role: link.role,
+        quantityUsed: link.quantity_used,
+        addonPriceCents: link.addon_price_cents,
+      }),
+    );
+
     return {
       itemId: item.item_id,
       companyId: item.company_id,
@@ -29,13 +40,81 @@ export class CatalogService {
       active: item.active,
       createdAt: item.created_at,
       updatedAt: item.updated_at,
+      ingredients: {
+        included: ingredients.filter((i: any) => i.role === 'included'),
+        addons: ingredients.filter((i: any) => i.role === 'addon'),
+      },
     };
+  }
+
+  private async syncIngredients(
+    itemId: string,
+    ingredients: CreateCatalogItemDto['ingredients'],
+  ) {
+    if (ingredients === undefined) {
+      return;
+    }
+
+    const { error: deleteError } = await this.supabase.adminClient
+      .from('catalog_item_ingredients')
+      .delete()
+      .eq('item_id', itemId);
+
+    if (deleteError) {
+      throw new BadRequestException(
+        `Erro ao atualizar ingredientes do item: ${deleteError.message}`,
+      );
+    }
+
+    if (ingredients.length === 0) {
+      return;
+    }
+
+    const { error: insertError } = await this.supabase.adminClient
+      .from('catalog_item_ingredients')
+      .insert(
+        ingredients.map((ingredient) => ({
+          item_id: itemId,
+          ingredient_id: ingredient.ingredientId,
+          role: ingredient.role,
+          quantity_used: ingredient.quantityUsed ?? 1,
+          addon_price_cents:
+            ingredient.role === 'addon'
+              ? ingredient.addonPriceCents ?? 0
+              : null,
+        })),
+      );
+
+    if (insertError) {
+      throw new BadRequestException(
+        `Erro ao vincular ingredientes ao item: ${insertError.message}`,
+      );
+    }
+  }
+
+  private async findByIdOrThrow(companyId: number, itemId: string) {
+    const { data, error } = await this.supabase.adminClient
+      .from('catalog_items')
+      .select(
+        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit))',
+      )
+      .eq('item_id', itemId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (error || !data) {
+      throw new NotFoundException('Item não encontrado.');
+    }
+
+    return this.toCatalogItemResponse(data);
   }
 
   async list(companyId: number, query: ListCatalogItemsQueryDto) {
     let builder = this.supabase.adminClient
       .from('catalog_items')
-      .select('*, categories(category_name)')
+      .select(
+        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit))',
+      )
       .eq('company_id', companyId)
       .order('item_name', { ascending: true })
       .limit(query.limit ?? 50);
@@ -110,7 +189,9 @@ export class CatalogService {
       throw new BadRequestException(`Erro ao criar item: ${error.message}`);
     }
 
-    return this.toCatalogItemResponse(data);
+    await this.syncIngredients(data.item_id, payload.ingredients);
+
+    return this.findByIdOrThrow(companyId, data.item_id);
   }
 
   async update(
@@ -149,7 +230,9 @@ export class CatalogService {
       throw new NotFoundException('Item não encontrado.');
     }
 
-    return this.toCatalogItemResponse(data);
+    await this.syncIngredients(itemId, payload.ingredients);
+
+    return this.findByIdOrThrow(companyId, itemId);
   }
 
   async remove(companyId: number, itemId: string) {

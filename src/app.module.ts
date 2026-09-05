@@ -8,7 +8,7 @@ import { CompaniesModule } from './companies/companies.module';
 import { MembersModule } from './members/members.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CatalogModule } from './catalog/catalog.module';
-import { StockModule } from './stock/stock.module';
+import { IngredientsModule } from './ingredients/ingredients.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { OrdersModule } from './orders/orders.module';
 import { StorefrontModule } from './storefront/storefront.module';
@@ -27,7 +27,7 @@ import { StorefrontModule } from './storefront/storefront.module';
     MembersModule,
     CategoriesModule,
     CatalogModule,
-    StockModule,
+    IngredientsModule,
     IntegrationsModule,
     OrdersModule,
     StorefrontModule,

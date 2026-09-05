@@ -20,6 +20,11 @@ export class OrderItemInputDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  addonIngredientIds?: string[];
 }
 
 export class CreateOrderDto {
