@@ -5,6 +5,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { AuthModule } from './auth/auth.module';
 import { AdminAuthModule } from './admin-auth/admin-auth.module';
 import { AdminDashboardModule } from './admin-dashboard/admin-dashboard.module';
+import { AdminHealthModule } from './admin-health/admin-health.module';
 import { CompaniesModule } from './companies/companies.module';
 import { MembersModule } from './members/members.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -25,6 +26,7 @@ import { StorefrontModule } from './storefront/storefront.module';
     AuthModule,
     AdminAuthModule,
     AdminDashboardModule,
+    AdminHealthModule,
     CompaniesModule,
     MembersModule,
     CategoriesModule,
