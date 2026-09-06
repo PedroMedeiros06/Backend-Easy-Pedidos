@@ -200,7 +200,7 @@ export class CompaniesService {
         updated_at: new Date().toISOString(),
       })
       .eq('company_id', companyId)
-      .select()
+      .select('*, members(auth_id, member_active)')
       .maybeSingle();
 
     if (error) {
@@ -209,6 +209,21 @@ export class CompaniesService {
     if (!data) {
       throw new NotFoundException('Estabelecimento não encontrado.');
     }
+
+    // Bloquear a empresa suspende o acesso de todos os membros dela no Auth
+    // (mata os refresh tokens). Ao desbloquear, só reativa quem está
+    // ativo individualmente — membro desativado por `member_active = false`
+    // continua suspenso.
+    const members = ((data as any).members ?? []) as Array<{
+      auth_id: string;
+      member_active: boolean;
+    }>;
+    const authIdsToTouch = payload.blocked
+      ? members.map((member) => member.auth_id)
+      : members
+          .filter((member) => member.member_active)
+          .map((member) => member.auth_id);
+    await this.supabase.setAuthSuspension(authIdsToTouch, payload.blocked);
 
     return this.toCompanyResponse(data);
   }

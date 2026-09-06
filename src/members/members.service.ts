@@ -199,6 +199,10 @@ export class MembersService {
       throw new NotFoundException('Membro não encontrado.');
     }
 
+    // Desativar suspende o acesso no Auth (mata o refresh token);
+    // reativar remove a suspensão.
+    await this.supabase.setAuthSuspension([data.auth_id], !payload.active);
+
     return data;
   }
 }
