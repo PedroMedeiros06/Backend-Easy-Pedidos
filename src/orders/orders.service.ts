@@ -9,6 +9,7 @@ import {
   ListOrdersQueryDto,
   UpdateOrderStatusDto,
 } from './dto/orders.dto';
+import { assertTransition, OrderStatus } from './order-status';
 
 @Injectable()
 export class OrdersService {
@@ -203,6 +204,14 @@ export class OrdersService {
   private async decrementIngredients(
     ingredientUsage: Map<string, number>,
   ) {
+    await this.adjustIngredients(ingredientUsage, -1);
+  }
+
+  // sign = -1 decrementa (venda), +1 devolve (estorno de cancelamento).
+  private async adjustIngredients(
+    ingredientUsage: Map<string, number>,
+    sign: 1 | -1,
+  ) {
     for (const [ingredientId, used] of ingredientUsage) {
       const { data: ingredient } = await this.supabase.adminClient
         .from('ingredients')
@@ -214,13 +223,70 @@ export class OrdersService {
         continue;
       }
 
-      const newQuantity = Math.max(ingredient.quantity - used, 0);
+      const newQuantity = Math.max(ingredient.quantity + sign * used, 0);
 
       await this.supabase.adminClient
         .from('ingredients')
         .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
         .eq('ingredient_id', ingredientId);
     }
+  }
+
+  // Re-deriva o consumo de ingredientes de um pedido a partir dos order_items
+  // e da receita ATUAL de cada catalog_item (mesma lógica de buildOrderItems).
+  // Se a receita mudou entre criar e cancelar, o estorno reflete a receita atual
+  // — order_items não guarda snapshot de consumo.
+  private async computeOrderIngredientUsage(
+    order: any,
+  ): Promise<Map<string, number>> {
+    const usage = new Map<string, number>();
+    const items: any[] = order.order_items ?? [];
+    const itemIds = [
+      ...new Set(items.map((i) => i.item_id).filter(Boolean)),
+    ];
+
+    if (itemIds.length === 0) {
+      return usage;
+    }
+
+    const { data: catalogItems } = await this.supabase.adminClient
+      .from('catalog_items')
+      .select(
+        'item_id, catalog_item_ingredients(role, ingredient_id, quantity_used)',
+      )
+      .eq('company_id', order.company_id)
+      .in('item_id', itemIds);
+
+    const catalogMap = new Map(
+      (catalogItems ?? []).map((c: any) => [c.item_id, c]),
+    );
+
+    for (const item of items) {
+      const catalogItem = catalogMap.get(item.item_id);
+      if (!catalogItem) {
+        continue;
+      }
+
+      const links: any[] = catalogItem.catalog_item_ingredients ?? [];
+      const included = links.filter((l) => l.role === 'included');
+
+      const addonIds = new Set(
+        (item.addons ?? []).map((a: any) => a.ingredientId),
+      );
+      const selectedAddons = links.filter(
+        (l) => l.role === 'addon' && addonIds.has(l.ingredient_id),
+      );
+
+      for (const link of [...included, ...selectedAddons]) {
+        const prev = usage.get(link.ingredient_id) ?? 0;
+        usage.set(
+          link.ingredient_id,
+          prev + (link.quantity_used ?? 1) * item.quantity,
+        );
+      }
+    }
+
+    return usage;
   }
 
   async create(
@@ -340,21 +406,50 @@ export class OrdersService {
     orderId: string,
     payload: UpdateOrderStatusDto,
   ) {
-    const { data, error } = await this.supabase.adminClient
+    const { data: current, error: fetchError } = await this.supabase.adminClient
       .from('orders')
-      .update({ status: payload.status, updated_at: new Date().toISOString() })
+      .select('*, order_items(*)')
       .eq('order_id', orderId)
       .eq('company_id', companyId)
-      .select()
       .maybeSingle();
+
+    if (fetchError) {
+      throw new BadRequestException(
+        `Erro ao carregar pedido: ${fetchError.message}`,
+      );
+    }
+    if (!current) {
+      throw new NotFoundException('Pedido não encontrado.');
+    }
+
+    const from = current.status as OrderStatus;
+    const to = payload.status as OrderStatus;
+
+    if (from === to) {
+      return this.findById(companyId, orderId);
+    }
+
+    assertTransition(from, to);
+
+    const { error } = await this.supabase.adminClient
+      .from('orders')
+      .update({ status: to, updated_at: new Date().toISOString() })
+      .eq('order_id', orderId)
+      .eq('company_id', companyId);
 
     if (error) {
       throw new BadRequestException(
         `Erro ao atualizar status do pedido: ${error.message}`,
       );
     }
-    if (!data) {
-      throw new NotFoundException('Pedido não encontrado.');
+
+    // Estorno de estoque: só ao entrar em 'cancelled' vindo de um status
+    // que já havia decrementado ingredientes (qualquer não-terminal).
+    // 'from === cancelled' é barrado acima pela máquina de estados, então
+    // não há risco de estornar duas vezes.
+    if (to === 'cancelled') {
+      const usage = await this.computeOrderIngredientUsage(current);
+      await this.adjustIngredients(usage, 1);
     }
 
     return this.findById(companyId, orderId);

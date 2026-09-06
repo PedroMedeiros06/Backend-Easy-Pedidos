@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -48,7 +49,7 @@ export class CompanyAuthGuard implements CanActivate {
         member_active,
         member_access,
         member_permissions,
-        companies(company_code)
+        companies(company_code, blocked, block_reason)
       `,
       )
       .eq('auth_id', user.id)
@@ -62,12 +63,22 @@ export class CompanyAuthGuard implements CanActivate {
       throw new UnauthorizedException('Membro inativo.');
     }
 
+    const company = (member as any).companies;
+
+    if (company?.blocked) {
+      throw new ForbiddenException(
+        company.block_reason
+          ? `Estabelecimento bloqueado: ${company.block_reason}`
+          : 'Estabelecimento bloqueado. Entre em contato com o suporte.',
+      );
+    }
+
     request.user = {
       kind: 'company',
       authId: user.id,
       memberId: member.member_id,
       companyId: member.company_id,
-      companyCode: (member as any).companies?.company_code,
+      companyCode: company?.company_code,
       email: member.member_email,
       memberAccess: member.member_access,
       permissions: member.member_permissions ?? {},
