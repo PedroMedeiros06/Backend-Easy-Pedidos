@@ -59,15 +59,28 @@ export class StorefrontService {
       catalogItems: (catalogItems ?? []).map((item: any) => {
         const links: any[] = item.catalog_item_ingredients ?? [];
 
-        // Item está disponível se dá pra montar ao menos 1 unidade: todo
-        // ingrediente incluso precisa de estoque >= quantidade usada por unidade.
-        // Quantidade em estoque nunca é exposta — só o booleano.
-        const available = links
-          .filter((link) => link.role === 'included')
-          .every(
-            (link) =>
-              (link.ingredients?.quantity ?? 0) >= (link.quantity_used ?? 1),
-          );
+        const includedLinks = links.filter((link) => link.role === 'included');
+
+        // Quantas unidades da receita cheia dá pra montar com o estoque atual:
+        // menor floor(estoque / consumo por unidade) entre os ingredientes da
+        // receita. null = item sem ingrediente rastreado (sem limite de estoque).
+        // Não expõe estoque cru, só o teto de unidades.
+        const maxQuantity =
+          includedLinks.length === 0
+            ? null
+            : Math.max(
+                0,
+                Math.min(
+                  ...includedLinks.map((link) =>
+                    Math.floor(
+                      (link.ingredients?.quantity ?? 0) /
+                        (link.quantity_used ?? 1),
+                    ),
+                  ),
+                ),
+              );
+
+        const available = maxQuantity === null || maxQuantity >= 1;
 
         // Só adicionais aparecem pro cliente, e só os que têm estoque pra 1 unidade.
         const addons = links
@@ -101,6 +114,7 @@ export class StorefrontService {
           discountValue: item.discount_value,
           discountType: item.discount_type,
           available,
+          maxQuantity,
           addons,
           removableIngredients,
         };

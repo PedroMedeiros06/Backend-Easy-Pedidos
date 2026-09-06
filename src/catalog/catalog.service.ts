@@ -15,17 +15,34 @@ export class CatalogService {
   constructor(private readonly supabase: SupabaseService) {}
 
   private toCatalogItemResponse(item: any) {
-    const ingredients = (item.catalog_item_ingredients ?? []).map(
-      (link: any) => ({
-        ingredientId: link.ingredient_id,
-        ingredientName: link.ingredients?.ingredient_name ?? null,
-        unit: link.ingredients?.unit ?? null,
-        role: link.role,
-        quantityUsed: link.quantity_used,
-        addonPriceCents: link.addon_price_cents,
-        removable: link.removable ?? false,
-      }),
-    );
+    const links: any[] = item.catalog_item_ingredients ?? [];
+
+    const ingredients = links.map((link: any) => ({
+      ingredientId: link.ingredient_id,
+      ingredientName: link.ingredients?.ingredient_name ?? null,
+      unit: link.ingredients?.unit ?? null,
+      role: link.role,
+      quantityUsed: link.quantity_used,
+      addonPriceCents: link.addon_price_cents,
+      removable: link.removable ?? false,
+    }));
+
+    // Quantas unidades da receita cheia dá pra montar com o estoque atual.
+    // null = item sem ingrediente rastreado. Não expõe estoque cru.
+    const includedLinks = links.filter((link) => link.role === 'included');
+    const maxQuantity =
+      includedLinks.length === 0
+        ? null
+        : Math.max(
+            0,
+            Math.min(
+              ...includedLinks.map((link) =>
+                Math.floor(
+                  (link.ingredients?.quantity ?? 0) / (link.quantity_used ?? 1),
+                ),
+              ),
+            ),
+          );
 
     return {
       itemId: item.item_id,
@@ -39,6 +56,7 @@ export class CatalogService {
       discountValue: item.discount_value,
       discountType: item.discount_type,
       active: item.active,
+      maxQuantity,
       createdAt: item.created_at,
       updatedAt: item.updated_at,
       ingredients: {
@@ -102,7 +120,7 @@ export class CatalogService {
     const { data, error } = await this.supabase.adminClient
       .from('catalog_items')
       .select(
-        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit))',
+        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit, quantity))',
       )
       .eq('item_id', itemId)
       .eq('company_id', companyId)
@@ -119,7 +137,7 @@ export class CatalogService {
     let builder = this.supabase.adminClient
       .from('catalog_items')
       .select(
-        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit))',
+        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit, quantity))',
       )
       .eq('company_id', companyId)
       .order('item_name', { ascending: true })
