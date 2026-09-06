@@ -23,6 +23,7 @@ export class CatalogService {
         role: link.role,
         quantityUsed: link.quantity_used,
         addonPriceCents: link.addon_price_cents,
+        removable: link.removable ?? false,
       }),
     );
 
@@ -82,6 +83,11 @@ export class CatalogService {
             ingredient.role === 'addon'
               ? ingredient.addonPriceCents ?? 0
               : null,
+          // 'removable' só vale pra included; addon ignora.
+          removable:
+            ingredient.role === 'included'
+              ? ingredient.removable ?? false
+              : false,
         })),
       );
 

@@ -37,7 +37,7 @@ export class StorefrontService {
       this.supabase.adminClient
         .from('catalog_items')
         .select(
-          'item_id, item_name, item_description, price_cents, category_id, image_url, discount_value, discount_type, catalog_item_ingredients(role, quantity_used, addon_price_cents, ingredients(ingredient_id, ingredient_name, quantity))',
+          'item_id, item_name, item_description, price_cents, category_id, image_url, discount_value, discount_type, catalog_item_ingredients(role, quantity_used, addon_price_cents, removable, ingredients(ingredient_id, ingredient_name, quantity))',
         )
         .eq('company_id', company.company_id)
         .eq('active', true)
@@ -82,6 +82,15 @@ export class StorefrontService {
             priceCents: link.addon_price_cents ?? 0,
           }));
 
+        // Ingredientes da receita que o dono marcou como removíveis ("sem cebola").
+        // Só id + nome — nunca quantidade/estoque. Os não-removíveis seguem ocultos.
+        const removableIngredients = links
+          .filter((link) => link.role === 'included' && link.removable)
+          .map((link) => ({
+            ingredientId: link.ingredients?.ingredient_id,
+            ingredientName: link.ingredients?.ingredient_name,
+          }));
+
         return {
           itemId: item.item_id,
           itemName: item.item_name,
@@ -93,6 +102,7 @@ export class StorefrontService {
           discountType: item.discount_type,
           available,
           addons,
+          removableIngredients,
         };
       }),
     };

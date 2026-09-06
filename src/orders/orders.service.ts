@@ -40,6 +40,7 @@ export class OrdersService {
         quantity: item.quantity,
         totalCents: item.total_cents,
         addons: item.addons ?? [],
+        removed: item.removed_ingredients ?? [],
       })),
     };
   }
@@ -95,6 +96,16 @@ export class OrdersService {
     // considerando o pedido inteiro (não só linha por linha).
     const ingredientUsage = new Map<string, number>();
 
+    // Consumo por unidade de cada item, por ingrediente — usado só pra dizer
+    // "só há estoque para N unidades de <item>" quando o estoque estoura.
+    // [{ itemName, ingredientId, perUnit, quantity }]
+    const usageByItem: Array<{
+      itemName: string;
+      ingredientId: string;
+      perUnit: number;
+      quantity: number;
+    }> = [];
+
     const orderItems = payload.items.map((requested) => {
       const catalogItem = catalogMap.get(requested.itemId);
 
@@ -128,12 +139,42 @@ export class OrdersService {
         );
       }
 
-      // soma consumo: ingredientes inclusos + adicionais escolhidos, multiplicado pela quantidade do pedido
-      for (const link of [...included, ...selectedAddons]) {
+      // Ingredientes removidos ("sem cebola"): cada id precisa ser um 'included'
+      // marcado como 'removable' daquele item.
+      const requestedRemovedIds = new Set(requested.removedIngredientIds ?? []);
+      const removableIncluded = included.filter((link) => link.removable);
+      const removedLinks = removableIncluded.filter((link) =>
+        requestedRemovedIds.has(link.ingredient_id),
+      );
+
+      const invalidRemovedIds = [...requestedRemovedIds].filter(
+        (id) => !removableIncluded.some((link) => link.ingredient_id === id),
+      );
+      if (invalidRemovedIds.length > 0) {
+        throw new BadRequestException(
+          `Ingrediente(s) que não podem ser removidos do item "${catalogItem.item_name}": ${invalidRemovedIds.join(', ')}.`,
+        );
+      }
+
+      const removedIds = new Set(removedLinks.map((link) => link.ingredient_id));
+
+      // soma consumo: inclusos NÃO removidos + adicionais escolhidos, × quantidade do pedido
+      const consumedLinks = [
+        ...included.filter((link) => !removedIds.has(link.ingredient_id)),
+        ...selectedAddons,
+      ];
+      for (const link of consumedLinks) {
+        const perUnit = link.quantity_used ?? 1;
         const used =
-          (link.quantity_used ?? 1) * requested.quantity +
+          perUnit * requested.quantity +
           (ingredientUsage.get(link.ingredient_id) ?? 0);
         ingredientUsage.set(link.ingredient_id, used);
+        usageByItem.push({
+          itemName: catalogItem.item_name,
+          ingredientId: link.ingredient_id,
+          perUnit,
+          quantity: requested.quantity,
+        });
       }
 
       const addonPriceCents = selectedAddons.reduce(
@@ -159,17 +200,27 @@ export class OrdersService {
           ingredientName: link.ingredients?.ingredient_name ?? null,
           priceCents: link.addon_price_cents ?? 0,
         })),
+        removed_ingredients: removedLinks.map((link) => ({
+          ingredientId: link.ingredient_id,
+          ingredientName: link.ingredients?.ingredient_name ?? null,
+        })),
       };
     });
 
-    await this.assertIngredientStock(ingredientUsage, catalogItems ?? []);
+    this.assertIngredientStock(ingredientUsage, catalogItems ?? [], usageByItem);
 
     return { orderItems, ingredientUsage };
   }
 
-  private async assertIngredientStock(
+  private assertIngredientStock(
     ingredientUsage: Map<string, number>,
     catalogItems: any[],
+    usageByItem: Array<{
+      itemName: string;
+      ingredientId: string;
+      perUnit: number;
+      quantity: number;
+    }>,
   ) {
     if (ingredientUsage.size === 0) {
       return;
@@ -194,6 +245,17 @@ export class OrdersService {
         continue;
       }
       if (ingredient.quantity < used) {
+        // Acha o item que puxa esse ingrediente e diz quantas unidades dele
+        // caberiam no estoque atual (assumindo esse item como o único consumidor).
+        const culprit = usageByItem.find(
+          (u) => u.ingredientId === ingredientId && u.perUnit > 0,
+        );
+        if (culprit) {
+          const maxUnits = Math.floor(ingredient.quantity / culprit.perUnit);
+          throw new BadRequestException(
+            `Só há estoque para ${maxUnits} unidade(s) de "${culprit.itemName}" (ingrediente "${ingredient.name}").`,
+          );
+        }
         throw new BadRequestException(
           `Estoque insuficiente de "${ingredient.name}" para este pedido.`,
         );
@@ -268,7 +330,15 @@ export class OrdersService {
       }
 
       const links: any[] = catalogItem.catalog_item_ingredients ?? [];
-      const included = links.filter((l) => l.role === 'included');
+
+      // Ingredientes que foram removidos deste item no pedido ("sem cebola")
+      // não foram consumidos, então não entram no estorno.
+      const removedIds = new Set(
+        (item.removed_ingredients ?? []).map((r: any) => r.ingredientId),
+      );
+      const included = links.filter(
+        (l) => l.role === 'included' && !removedIds.has(l.ingredient_id),
+      );
 
       const addonIds = new Set(
         (item.addons ?? []).map((a: any) => a.ingredientId),

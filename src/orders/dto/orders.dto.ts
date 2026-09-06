@@ -25,6 +25,12 @@ export class OrderItemInputDto {
   @IsArray()
   @IsUUID('4', { each: true })
   addonIngredientIds?: string[];
+
+  // Ingredientes 'included' e 'removable' que o cliente tirou do item ("sem cebola").
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  removedIngredientIds?: string[];
 }
 
 export class CreateOrderDto {

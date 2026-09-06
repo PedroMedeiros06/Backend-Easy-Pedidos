@@ -34,6 +34,12 @@ export class CatalogItemIngredientInputDto {
   @IsInt({ message: 'O preço do adicional deve ser em centavos (inteiro).' })
   @Min(0)
   addonPriceCents?: number;
+
+  // Só faz sentido para role=included: se true, o cliente pode remover este
+  // ingrediente ao montar o pedido ("sem cebola"). Ignorado para addon.
+  @IsOptional()
+  @IsBoolean()
+  removable?: boolean;
 }
 
 export class CreateCatalogItemDto {
