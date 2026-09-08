@@ -10,6 +10,7 @@ import {
   UpdateOrderStatusDto,
 } from './dto/orders.dto';
 import { assertTransition, OrderStatus } from './order-status';
+import { applyDiscount, itemUnitPrice } from '@/common/pricing/discount';
 
 @Injectable()
 export class OrdersService {
@@ -45,17 +46,16 @@ export class OrdersService {
     };
   }
 
-  private applyItemDiscount(
-    priceCents: number,
-    discountValue: number,
-    discountType: string,
-  ): number {
-    const discount =
-      discountType === 'percentage'
-        ? Math.round(priceCents * (Math.min(discountValue, 100) / 100))
-        : discountValue;
-
-    return Math.max(priceCents - discount, 0);
+  /**
+   * Preço unitário do item já com categoria + item empilhados (sem addons).
+   * Ver src/common/pricing/discount.ts pra regra completa.
+   */
+  private itemUnitPriceBeforeAddons(catalogItem: any): number {
+    return itemUnitPrice(
+      catalogItem.price_cents,
+      catalogItem,
+      catalogItem.categories,
+    );
   }
 
   private applyOrderDiscount(
@@ -63,12 +63,7 @@ export class OrdersService {
     discountValue: number,
     discountType: string,
   ): number {
-    const discount =
-      discountType === 'percentage'
-        ? Math.round(subtotalCents * (Math.min(discountValue, 100) / 100))
-        : discountValue;
-
-    return Math.max(subtotalCents - discount, 0);
+    return applyDiscount(subtotalCents, discountValue, discountType);
   }
 
   private async buildOrderItems(companyId: number, payload: CreateOrderDto) {
@@ -77,7 +72,7 @@ export class OrdersService {
     const { data: catalogItems, error } = await this.supabase.adminClient
       .from('catalog_items')
       .select(
-        'item_id, item_name, price_cents, discount_value, discount_type, active, catalog_item_ingredients(*, ingredients(ingredient_id, ingredient_name, unit, quantity))',
+        'item_id, item_name, price_cents, discount_value, discount_type, active, categories(discount_value, discount_type), catalog_item_ingredients(*, ingredients(ingredient_id, ingredient_name, unit, quantity))',
       )
       .eq('company_id', companyId)
       .in('item_id', itemIds);
@@ -183,11 +178,7 @@ export class OrdersService {
       );
 
       const unitPriceCents =
-        this.applyItemDiscount(
-          catalogItem.price_cents,
-          catalogItem.discount_value ?? 0,
-          catalogItem.discount_type ?? 'value',
-        ) + addonPriceCents;
+        this.itemUnitPriceBeforeAddons(catalogItem) + addonPriceCents;
 
       return {
         item_id: catalogItem.item_id,

@@ -21,9 +21,25 @@ export class CategoriesService {
       categoryName: category.category_name,
       sortOrder: category.sort_order,
       active: category.active,
+      discountValue: category.discount_value ?? 0,
+      discountType: category.discount_type ?? 'value',
       createdAt: category.created_at,
       updatedAt: category.updated_at,
     };
+  }
+
+  private assertDiscount(payload: {
+    discountType?: string;
+    discountValue?: number;
+  }) {
+    if (
+      payload.discountType === 'percentage' &&
+      (payload.discountValue ?? 0) > 100
+    ) {
+      throw new BadRequestException(
+        'O desconto percentual não pode ser maior que 100.',
+      );
+    }
   }
 
   async list(companyId: number, query: ListCategoriesQueryDto) {
@@ -73,12 +89,16 @@ export class CategoriesService {
       );
     }
 
+    this.assertDiscount(payload);
+
     const { data, error } = await this.supabase.adminClient
       .from('categories')
       .insert({
         company_id: companyId,
         category_name: payload.categoryName,
         sort_order: payload.sortOrder ?? 0,
+        discount_value: payload.discountValue ?? 0,
+        discount_type: payload.discountType ?? 'value',
       })
       .select()
       .single();
@@ -97,12 +117,16 @@ export class CategoriesService {
     categoryId: string,
     payload: UpdateCategoryDto,
   ) {
+    this.assertDiscount(payload);
+
     const { data, error } = await this.supabase.adminClient
       .from('categories')
       .update({
         category_name: payload.categoryName,
         sort_order: payload.sortOrder,
         active: payload.active,
+        discount_value: payload.discountValue,
+        discount_type: payload.discountType,
         updated_at: new Date().toISOString(),
       })
       .eq('category_id', categoryId)

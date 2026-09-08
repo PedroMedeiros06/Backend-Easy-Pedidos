@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -19,6 +20,19 @@ export class CreateCategoryDto {
   @Type(() => Number)
   @IsInt()
   sortOrder?: number;
+
+  // Desconto da categoria inteira. Empilha com o desconto do item
+  // (categoria primeiro, item depois; percentuais compõem multiplicativo).
+  // value = centavos; percentage = 0..100.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'O desconto deve ser em centavos ou pontos percentuais (inteiro).' })
+  @Min(0)
+  discountValue?: number;
+
+  @IsOptional()
+  @IsIn(['value', 'percentage'])
+  discountType?: 'value' | 'percentage';
 }
 
 export class UpdateCategoryDto extends PartialType(CreateCategoryDto) {
