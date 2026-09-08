@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '@/supabase/supabase.service';
 import { OrdersService } from '@/orders/orders.service';
 import { CreateOrderDto } from '@/orders/dto/orders.dto';
+import { itemUnitPrice } from '@/common/pricing/discount';
 
 @Injectable()
 export class StorefrontService {
@@ -37,7 +38,7 @@ export class StorefrontService {
       this.supabase.adminClient
         .from('catalog_items')
         .select(
-          'item_id, item_name, item_description, price_cents, category_id, image_url, discount_value, discount_type, catalog_item_ingredients(role, quantity_used, addon_price_cents, removable, ingredients(ingredient_id, ingredient_name, quantity))',
+          'item_id, item_name, item_description, price_cents, category_id, image_url, discount_value, discount_type, categories(discount_value, discount_type), catalog_item_images(image_id, url, sort_order, created_at), catalog_item_ingredients(role, quantity_used, addon_price_cents, removable, ingredients(ingredient_id, ingredient_name, quantity))',
         )
         .eq('company_id', company.company_id)
         .eq('active', true)
@@ -104,6 +105,20 @@ export class StorefrontService {
             ingredientName: link.ingredients?.ingredient_name,
           }));
 
+        // Fotos do item, ordenadas. imageUrl continua sendo a primeira (capa),
+        // mantido pra retrocompat de quem lê só um campo.
+        const images = [...((item.catalog_item_images as any[]) ?? [])]
+          .sort(
+            (a, b) =>
+              (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+              String(a.created_at).localeCompare(String(b.created_at)),
+          )
+          .map((img: any) => ({
+            imageId: img.image_id,
+            url: img.url,
+            sortOrder: img.sort_order,
+          }));
+
         return {
           itemId: item.item_id,
           itemName: item.item_name,
@@ -111,8 +126,17 @@ export class StorefrontService {
           priceCents: item.price_cents,
           categoryId: item.category_id,
           imageUrl: item.image_url,
+          images,
           discountValue: item.discount_value,
           discountType: item.discount_type,
+          categoryDiscountValue: item.categories?.discount_value ?? 0,
+          categoryDiscountType: item.categories?.discount_type ?? 'value',
+          // Preço unitário final já com categoria + item empilhados (sem addons).
+          effectivePriceCents: itemUnitPrice(
+            item.price_cents,
+            item,
+            item.categories,
+          ),
           available,
           maxQuantity,
           addons,

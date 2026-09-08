@@ -9,6 +9,7 @@ import {
   ListCatalogItemsQueryDto,
   UpdateCatalogItemDto,
 } from './dto/catalog.dto';
+import { itemUnitPrice } from '@/common/pricing/discount';
 
 @Injectable()
 export class CatalogService {
@@ -44,6 +45,18 @@ export class CatalogService {
             ),
           );
 
+    const images = [...((item.catalog_item_images as any[]) ?? [])]
+      .sort(
+        (a, b) =>
+          (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+          String(a.created_at).localeCompare(String(b.created_at)),
+      )
+      .map((img: any) => ({
+        imageId: img.image_id,
+        url: img.url,
+        sortOrder: img.sort_order,
+      }));
+
     return {
       itemId: item.item_id,
       companyId: item.company_id,
@@ -53,8 +66,19 @@ export class CatalogService {
       categoryId: item.category_id,
       categoryName: item.categories?.category_name ?? null,
       imageUrl: item.image_url,
+      images,
       discountValue: item.discount_value,
       discountType: item.discount_type,
+      // Desconto da categoria (0/'value' se sem categoria ou sem desconto).
+      categoryDiscountValue: item.categories?.discount_value ?? 0,
+      categoryDiscountType: item.categories?.discount_type ?? 'value',
+      // Preço unitário final já com categoria + item empilhados (sem addons,
+      // sem desconto de pedido). É o que o cliente paga por unidade.
+      effectivePriceCents: itemUnitPrice(
+        item.price_cents,
+        item,
+        item.categories,
+      ),
       active: item.active,
       maxQuantity,
       createdAt: item.created_at,
@@ -120,7 +144,7 @@ export class CatalogService {
     const { data, error } = await this.supabase.adminClient
       .from('catalog_items')
       .select(
-        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit, quantity))',
+        '*, categories(category_name, discount_value, discount_type), catalog_item_images(image_id, url, sort_order, created_at), catalog_item_ingredients(*, ingredients(ingredient_name, unit, quantity))',
       )
       .eq('item_id', itemId)
       .eq('company_id', companyId)
@@ -137,7 +161,7 @@ export class CatalogService {
     let builder = this.supabase.adminClient
       .from('catalog_items')
       .select(
-        '*, categories(category_name), catalog_item_ingredients(*, ingredients(ingredient_name, unit, quantity))',
+        '*, categories(category_name, discount_value, discount_type), catalog_item_images(image_id, url, sort_order, created_at), catalog_item_ingredients(*, ingredients(ingredient_name, unit, quantity))',
       )
       .eq('company_id', companyId)
       .order('item_name', { ascending: true })
